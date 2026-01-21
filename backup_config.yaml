@@ -1,0 +1,60 @@
+Version: 0.0.7
+auth:
+  default:
+    domain: workgroup.com
+    encryptedPassword: Cl+sBAAAA7Eqo9p
+    password: ''
+    username: foo
+  dpapiScope: machine
+  hosts:
+  - domain: workgroup
+    encryptedPassword: Cl+sBAAAA7Eqo9pxWxkG
+    host: 192.168.1.31
+    password: ''
+    username: foo
+  - domain: workgroup
+    host: 192.168.1.162
+    password: ''
+    username: foo
+  - domain: workgroup
+    host: 192.168.1.201
+    password: ''
+    username: foo
+  - domain: workgroup
+    encryptedPassword: Cl+sBAAAA7Eqo9pxWxk
+    host: 192.168.1.91
+    password: ''
+    username: foo
+backupLocation: ifs\cluster\mfg_swd
+backupServerIps:
+- 102.121.143.87
+- localHost
+computer2Backup:
+- FES:
+    Backups:
+    - C:\
+    - C:\foo
+    Exclude:  
+    - 'regex ^C:\\foo\\[0-9]{8}\\.*'
+    Host: 192.168.1.91
+- FIS:
+    Backups:
+    - \\192.168.1.31\C$\foo
+    - \\192.168.1.31\C$\RTS Digi Serial
+    Exclude:
+    - \\192.168.1.31\C$\foo\*.log
+    Host: 192.168.1.31
+- WHS:
+    Backups:
+    - \\192.168.1.162\foo
+    Host: 192.168.1.162
+- HRTS:
+    Backups:
+    - \\192.168.1.201\foo
+    Exclude: []
+    Host: 192.168.1.201
+logLvl: 4
+retentionCount: 14
+schedule:
+  cron: '*/5 0/2 * * *'
+tempRoot: C:\Temp\Backups
