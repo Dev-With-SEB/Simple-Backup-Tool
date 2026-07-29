@@ -34,7 +34,6 @@ A small, practical utility to back up files and folders from **local paths** or 
 - [Project Layout](#project-layout)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
-- [License](#license)
 
 ---
 
@@ -336,8 +335,4 @@ python -m src.backupTool --run
 ```
 
 ---
-
-## License
-
-Choose an open-source license (e.g., MIT, Apache-2.0) and add a `LICENSE` file.
 
