@@ -1,5 +1,7 @@
 # Backup Tool for Windows SMB
 
+![backup_image](images/backup_image.png)
+
 Backup Tool collects files and folders from local paths or remote UNC/SMB shares, creates a ZIP archive for each run, uploads the archive to a central SMB destination, and enforces backup retention. The application can run manually, on a schedule, or as a Windows service.
 
 ## Highlights
