@@ -13,8 +13,6 @@ import platform
 import threading
 import traceback
 import subprocess
-# import tkinter as tk
-# from tkinter import ttk, messagebox, simpledialog, filedialog
 import win32serviceutil
 import win32service
 import pywintypes
@@ -48,25 +46,41 @@ DEFAULT_RUN_NOW_COMMAND = ""
 
 # ---------- YAML Helpers ----------
 # should really sunset this in favor of the conf class and loader
+# def load_config(path):
+#     if not os.path.exists(path):
+#         messagebox.showerror("Missing file", "Config file not found: {}".format(path))
+#         return {"auth": {"hosts": []}, "computer2Backup": []}
+#     with open(path, "rb") as f:
+#         try:
+#             cfg = yaml.safe_load(f)
+#         except Exception as e:
+#             messagebox.showerror("YAML error", "Failed to parse YAML: {}".format(e))
+#             cfg = {}
+#     # Ensure basic structure
+#     if "auth" not in cfg or cfg["auth"] is None:
+#         cfg["auth"] = {}
+#     if "hosts" not in cfg["auth"] or cfg["auth"]["hosts"] is None:
+#         cfg["auth"]["hosts"] = []
+#     if "computer2Backup" not in cfg or cfg["computer2Backup"] is None:
+#         cfg["computer2Backup"] = []
+#     return cfg
+
+
 def load_config(path):
     if not os.path.exists(path):
         messagebox.showerror("Missing file", "Config file not found: {}".format(path))
-        return {"auth": {"hosts": []}, "computer2Backup": []}
-    with open(path, "rb") as f:
-        try:
-            cfg = yaml.safe_load(f)
-        except Exception as e:
-            messagebox.showerror("YAML error", "Failed to parse YAML: {}".format(e))
-            cfg = {}
-    # Ensure basic structure
-    if "auth" not in cfg or cfg["auth"] is None:
-        cfg["auth"] = {}
-    if "hosts" not in cfg["auth"] or cfg["auth"]["hosts"] is None:
-        cfg["auth"]["hosts"] = []
-    if "computer2Backup" not in cfg or cfg["computer2Backup"] is None:
-        cfg["computer2Backup"] = []
-    return cfg
+        return { "auth": { "default": {} }, "computer2Backup": [] }
 
+    try:
+        loader = ConfigLoader(path, lambda cfg: None, get_logger())
+        cfg = loader.load_now()
+        return cfg._raw
+
+    except Exception as e:
+        messagebox.showerror("Configuration error", "Failed to load configuration: {}".format(e))
+        get_logger().error(traceback.format_exc())
+        return { "auth": { "default": {} }, "computer2Backup": [] }
+    
 
 def save_config(path, data):
     try:
@@ -92,7 +106,7 @@ UNC_IP_RE = re.compile(r"^\\\\{2}(\d{1,3}(?:\.\d{1,3}){3})\\", re.IGNORECASE)
 
 def infer_host_from_paths(paths):
     """
-    Try to infer IP/host from UNC path list like \\192.9.200.31\C$\amat
+    Try to infer IP/host from UNC path list like \\192.168.200.31\C$\Foobar
     Returns first matching IP or None.
     """
     if not paths:
@@ -105,52 +119,52 @@ def infer_host_from_paths(paths):
             return m.group(1)
     return None
 
-def find_auth_host(cfg, host_value):
-    """
-    Find auth.hosts entry by exact 'host' match.
-    Returns (index, entry) or (None, None).
-    """
-    if not host_value:
-        return (None, None)
-    hosts = cfg.get("auth", {}).get("hosts", [])
-    for i, h in enumerate(hosts):
-        if str(h.get("host", "")).strip() == str(host_value).strip():
-            return (i, h)
-    return (None, None)
+# def find_auth_host(cfg, host_value):
+#     """
+#     Find auth.hosts entry by exact 'host' match.
+#     Returns (index, entry) or (None, None).
+#     """
+#     if not host_value:
+#         return (None, None)
+#     hosts = cfg.get("auth", {}).get("hosts", [])
+#     for i, h in enumerate(hosts):
+#         if str(h.get("host", "")).strip() == str(host_value).strip():
+#             return (i, h)
+#     return (None, None)
 
-def upsert_auth_host(cfg, host, username, domain, password):
-    """
-    Create or update auth.hosts entry for 'host'.
-    """
-    if not host:
-        return
-    idx, h = find_auth_host(cfg, host)
-    if idx is None:
-        cfg["auth"]["hosts"].append({
-            "host": host,
-            "username": username or "",
-            "domain": domain or "",
-            "password": password or ""
-        })
-    else:
-        if username is not None:
-            h["username"] = username
-        if domain is not None:
-            h["domain"] = domain
-        if password is not None:
-            h["password"] = password
+# def upsert_auth_host(cfg, host, username, domain, password):
+#     """
+#     Create or update auth.hosts entry for 'host'.
+#     """
+#     if not host:
+#         return
+#     idx, h = find_auth_host(cfg, host)
+#     if idx is None:
+#         cfg["auth"]["hosts"].append({
+#             "host": host,
+#             "username": username or "",
+#             "domain": domain or "",
+#             "password": password or ""
+#         })
+#     else:
+#         if username is not None:
+#             h["username"] = username
+#         if domain is not None:
+#             h["domain"] = domain
+#         if password is not None:
+#             h["password"] = password
 
-def remove_auth_host(cfg, host):
-    """
-    Remove auth.hosts entry for 'host' if present.
-    """
-    if not host:
-        return
-    hosts = cfg.get("auth", {}).get("hosts", [])
-    for i, h in enumerate(list(hosts)):
-        if str(h.get("host", "")).strip() == str(host).strip():
-            del hosts[i]
-            break
+# def remove_auth_host(cfg, host):
+#     """
+#     Remove auth.hosts entry for 'host' if present.
+#     """
+#     if not host:
+#         return
+#     hosts = cfg.get("auth", {}).get("hosts", [])
+#     for i, h in enumerate(list(hosts)):
+#         if str(h.get("host", "")).strip() == str(host).strip():
+#             del hosts[i]
+#             break
 
 def find_computer_entry(cfg, computer_name):
     """
@@ -608,13 +622,14 @@ class ComputerSelectionFrame(tk.Frame):
     def _select(self, name):
         self.on_pick(name)
 
+
 class ComputerEditFrame(tk.Frame):
     """
     Edit or Add computer.
     Includes Cancel and Save buttons.
     Scrollable, two-column grid layout.
     """
-    def __init__(self, master, mode, initial_name, comp_data, auth_data, on_save, on_cancel):
+    def __init__(self, master, mode, initial_name, comp_data, on_save, on_cancel):
         tk.Frame.__init__(self, master)
         # --- Scrollable canvas setup ---
         canvas = tk.Canvas(self)
@@ -642,27 +657,33 @@ class ComputerEditFrame(tk.Frame):
 
         # Host/IP
         tk.Label(scrollable_frame, text="Host/IP:").grid(row=2, column=0, sticky="e", padx=6, pady=2)
+        conn_data = {}
         host_prefill = None
-        if comp_data and "Host" in comp_data:
-            host_prefill = comp_data.get("Host")
-        elif comp_data:
-            host_prefill = infer_host_from_paths(comp_data.get("Backups", []) or [])
+        if comp_data:
+            conn_data = comp_data.get("Connection", {})
+            if "Host" in conn_data:
+                host_prefill = conn_data.get("Host")
+            elif "host" in conn_data:
+                host_prefill = conn_data.get("host")
+            else:
+                host_prefill = infer_host_from_paths(comp_data.get("Backups", []) or [])
+
         self.host_var = tk.StringVar(value=host_prefill or "")
         tk.Entry(scrollable_frame, textvariable=self.host_var, width=28).grid(row=2, column=1, sticky="w", padx=6, pady=2)
 
         # Auth Username
         tk.Label(scrollable_frame, text="Auth Username:").grid(row=1, column=3, sticky="e", padx=6, pady=2)
-        self.username_var = tk.StringVar(value=(auth_data.get("username", "") if auth_data else ""))
+        self.username_var = tk.StringVar(value=conn_data.get("Username", ""))
         tk.Entry(scrollable_frame, textvariable=self.username_var, width=28).grid(row=1, column=4, sticky="w", padx=6, pady=2)
 
         # Auth Password
         tk.Label(scrollable_frame, text="Auth Password:").grid(row=2, column=3, sticky="e", padx=6, pady=2)
-        self.password_var = tk.StringVar(value=(auth_data.get("password", "") if auth_data else ""))
+        self.password_var = tk.StringVar(value="")
         tk.Entry(scrollable_frame, textvariable=self.password_var, width=28, show="*").grid(row=2, column=4, sticky="w", padx=6, pady=2)
 
         # Auth Domain
         tk.Label(scrollable_frame, text="Auth Domain:").grid(row=3, column=3, sticky="e", padx=6, pady=2)
-        self.domain_var = tk.StringVar(value=(auth_data.get("domain", "") if auth_data else ""))
+        self.domain_var = tk.StringVar(value=conn_data.get("Domain", ""))
         tk.Entry(scrollable_frame, textvariable=self.domain_var, width=28).grid(row=3, column=4, sticky="w", padx=6, pady=2)
 
         tk.Label(scrollable_frame, text="").grid(row=0, column=4, sticky="e", padx=6, pady=2)
@@ -700,6 +721,7 @@ class ComputerEditFrame(tk.Frame):
             }
         }
         self._on_save(data)
+
 
 class ScheduleFrame(tk.Frame):
     def __init__(self, master, cfg, cfg_File, back_callback, cron_module, *args, **kwargs):
@@ -1109,14 +1131,14 @@ class BackupManagerGUI(tk.Tk):
         # Table overview (read-only summary)
         table_frame = tk.Frame(self.home_frame)
         table_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
-        cols = ("Backups", "Excludes", "Host")
+        cols = ("Host", "Backups", "Excludes")
         self.tree = ttk.Treeview(table_frame, columns=cols, show="headings")
+        self.tree.heading("Host",    text="Auth Host/IP")
         self.tree.heading("Backups", text="Backups")
         self.tree.heading("Excludes", text="Excludes")
-        self.tree.heading("Host",    text="Auth Host/IP")
+        self.tree.column("Host",     width=140)
         self.tree.column("Backups", width=460)
         self.tree.column("Excludes", width=360)
-        self.tree.column("Host",     width=140)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
@@ -1137,8 +1159,8 @@ class BackupManagerGUI(tk.Tk):
             details = item[name]
             backups = ", ".join(details.get("Backups", []) or [])
             excludes = ", ".join(details.get("Exclude", []) or [])
-            host = details.get("Host", "") or infer_host_from_paths(details.get("Backups", []) or []) or ""
-            self.tree.insert("", "end", iid=name, values=(backups, excludes, host))
+            host = details.get("Host", "") or details.get("host", "") or infer_host_from_paths(details.get("Backups", []) or []) or "" or name
+            self.tree.insert("", "end", iid=name, values=(host, backups, excludes))
 
     def _show_download_backup(self):
         self._show_view('download')
@@ -1176,14 +1198,31 @@ class BackupManagerGUI(tk.Tk):
 
     def _creds_for(self, host):
         # Try host-specific creds from auth.hosts; fall back to auth.default
-        _, auth_host = find_auth_host(self.cfg, host)
-        source = auth_host or self.cfg.get("auth", {}).get("default", {})
+        source = self.cfg.get("auth", {}).get("default", {})
+        for item in self.cfg.get("computer2Backup", []):
+            comp_name = list(item.keys())[0]
+            comp_data = item[comp_name]
+            conn = comp_data.get("Connection", {})
+            if conn.get("Host") == host:
+                source = conn
+                break
         return {
-            "username": source.get("username", ""),
-            # "password": source.get("password", ""),
+            "username": source.get("Username", ""),
             "password": PasswordManager.resolve_password(source),
-            "domain":   source.get("domain", "")
+            "domain": source.get("Domain", "")
         }
+
+
+    # def _creds_for(self, host):
+    #     # Try host-specific creds from auth.hosts; fall back to auth.default
+    #     _, auth_host = find_auth_host(self.cfg, host)
+    #     source = auth_host or self.cfg.get("auth", {}).get("default", {})
+    #     return {
+    #         "username": source.get("username", ""),
+    #         # "password": source.get("password", ""),
+    #         "password": PasswordManager.resolve_password(source),
+    #         "domain":   source.get("domain", "")
+    #     }
 
     def _Build_download_backup(self):
         downloadFrame = tk.Frame(self.main_frame)
@@ -1315,18 +1354,20 @@ class BackupManagerGUI(tk.Tk):
     def _show_add(self):
         # empty add frame
         def build(parent):
-            comp_data = {"Backups": [], "Exclude": [], "Host": ""}
-            auth_data = {}
-            return ComputerEditFrame(parent, "add", "", comp_data, auth_data, self._save_add, self._back_to_main)
+            comp_data = {
+                    "Connection": {
+                        "Host": "",
+                        "Username": "",
+                        "Domain": "",
+                        "Password": ""
+                    },
+                    "Backups": [],
+                    "Exclude": []
+                }
+            return ComputerEditFrame(parent, "add", "", comp_data,  self._save_add, self._back_to_main)
         self._show_subframe(build)
 
-    def _show_backup_location(self):
-        # empty add frame
-        def build(parent):
-            comp_data = {"Backups": [], "Exclude": [], "Host": ""}
-            auth_data = {}
-            return ComputerEditFrame(parent, "add", "", comp_data, auth_data, self._save_add, self._back_to_main)
-        self._show_subframe(build)        
+    def _show_backup_location(self):  self._show_add()
 
     def _start_edit(self, name):
         # Hide selection, show edit frame populated
@@ -1334,47 +1375,53 @@ class BackupManagerGUI(tk.Tk):
         if idx is None:
             messagebox.showerror("Edit", "Entry not found: {}".format(name))
             return
-        host_val = comp_data.get("Host", "") or infer_host_from_paths(comp_data.get("Backups", []) or []) or ""
-        _, auth_data = find_auth_host(self.cfg, host_val)
-
+        conn_data = comp_data.get("Connection", {})
+        host_val = conn_data.get("Host", "") or infer_host_from_paths(comp_data.get("Backups", []) or []) or ""
         def build(parent):
-            return ComputerEditFrame(parent, "edit", name, comp_data, auth_data or {}, self._save_edit, self._back_to_main)
+            return ComputerEditFrame(parent, "edit", name, comp_data, self._save_edit, self._back_to_main)
         self._show_subframe(build)
+
 
     def _perform_delete(self, name):
         idx, comp_data = find_computer_entry(self.cfg, name)
         if idx is None:
             messagebox.showerror("Delete", "Entry not found: {}".format(name))
             return
-        host = comp_data.get("Host", "") or infer_host_from_paths(comp_data.get("Backups", []) or []) or ""
+
         del self.cfg["computer2Backup"][idx]
-        if host:
-            remove_auth_host(self.cfg, host)
+
         save_config(self.cfg_File, self.cfg)
         messagebox.showinfo("Delete", "Deleted '{}'".format(name))
         self._back_to_main()
 
+
     def _save_add(self, data):
-        # Add new computer and auth
         name = data.get("name")
         if not name:
             messagebox.showerror("Add", "Computer name is required.")
             return
-        # Prevent duplicate names
         idx, _ = find_computer_entry(self.cfg, name)
         if idx is not None:
             messagebox.showerror("Add", "Computer '{}' already exists.".format(name))
             return
+        host = data.get("Host", "") or infer_host_from_paths(data.get("Backups", []) or []) or ""
+        auth = data.get("auth", {})
+
         comp_details = {
+            "Connection": {
+                "Host": host,
+                "Username": auth.get("username", ""),
+                "Domain": auth.get("domain", ""),
+                "Password": auth.get("password", "")
+            },
             "Backups": data.get("Backups", []),
             "Exclude": data.get("Exclude", [])
         }
-        host = data.get("Host", "") or infer_host_from_paths(comp_details.get("Backups", []) or []) or ""
-        if host:
-            comp_details["Host"] = host
-        self.cfg["computer2Backup"].append({name: comp_details})
-        auth = data.get("auth", {})
-        upsert_auth_host(self.cfg, host, auth.get("username"), auth.get("domain"), auth.get("password"))
+
+        self.cfg["computer2Backup"].append({
+            name: comp_details
+        })
+
         save_config(self.cfg_File, self.cfg)
         messagebox.showinfo("Add", "Added '{}'".format(name))
         self._back_to_main()
@@ -1382,45 +1429,40 @@ class BackupManagerGUI(tk.Tk):
 
     def _save_edit(self, data):
         old_name = None
+
         if hasattr(self, 'tree') and self.tree and self.tree.winfo_exists():
             sel = self.tree.selection()
             if sel:
                 old_name = sel[0]
-            else:
-                sel = []
-        # If not using selection, use provided name for lookup
+
         target_name = old_name or data.get("name")
         idx, comp = find_computer_entry(self.cfg, target_name)
         if idx is None:
-            # If the name was changed, try old target via UI field
             idx, comp = find_computer_entry(self.cfg, data.get("name"))
             if idx is None:
                 messagebox.showerror("Save", "Entry not found for '{}'".format(target_name))
                 return
-        old_host = comp.get("Host", "") or infer_host_from_paths(comp.get("Backups", []) or []) or ""
-        new_host = data.get("Host", "") or infer_host_from_paths(data.get("Backups", []) or []) or ""
-
-        # Update details (support rename)
         new_name = data.get("name")
+        new_host = data.get("Host", "") or infer_host_from_paths(data.get("Backups", []) or []) or ""
+        auth = data.get("auth", {})
+
         self.cfg["computer2Backup"][idx] = {
             new_name: {
+                "Connection": {
+                    "Host": new_host,
+                    "Username": auth.get("username", ""),
+                    "Domain": auth.get("domain", ""),
+                    "Password": auth.get("password", "")
+                },
                 "Backups": data.get("Backups", []),
                 "Exclude": data.get("Exclude", [])
             }
         }
-        if new_host:
-            self.cfg["computer2Backup"][idx][new_name]["Host"] = new_host
 
-        # Update auth
-        auth = data.get("auth", {})
-        if old_host and old_host != new_host:
-            # Move old auth if host changed
-            remove_auth_host(self.cfg, old_host)
-            upsert_auth_host(self.cfg, new_host, auth.get("username"), auth.get("domain"), auth.get("password"))
         save_config(self.cfg_File, self.cfg)
         messagebox.showinfo("Save", "Saved changes for '{}'".format(new_name))
         self._back_to_main()
-
+        
 
     def _show_backup_settings(self):
         self._show_view('backup_settings')

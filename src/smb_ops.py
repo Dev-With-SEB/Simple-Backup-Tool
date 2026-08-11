@@ -150,13 +150,19 @@ class SMBSessionCache(object):
                         pass
                     self._conns.pop(host, None)
 
-            username = creds.get("username") or ""
-            domain = creds.get("domain") or ""
+            username = creds.get("Username") or creds.get("username") or ""
+            domain = creds.get("Domain") or creds.get("domain") or ""
             password = PasswordManager.resolve_password(creds)
-            self.log.debug("SMB creds selected for {} -> domain={} user={} (pwd={}, encrypted={})".format(
-                host, domain or "", username or "",
-                "SET" if bool(password) else "EMPTY",
-                "YES" if bool(creds.get("encryptedPassword")) else "NO"))
+
+            self.log.debug(
+                "SMB creds selected for {} -> domain={} user={} (pwd={}, encrypted={})".format(
+                    host,
+                    domain or "",
+                    username or "",
+                    "SET" if bool(password) else "EMPTY",
+                    "YES" if bool(creds.get("EncryptedPassword") or creds.get("encryptedPassword")) else "NO"
+                )
+            )
 
             conn = self._mk_conn(host, username, password, domain)
             self._conns[host] = conn

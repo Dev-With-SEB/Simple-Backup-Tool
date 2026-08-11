@@ -94,9 +94,15 @@ class PasswordManager(object):
             if PasswordManager._sanitize_auth_entry(auth["default"], scope):
                 changed = True
 
-        for ent in (auth.get("hosts") or []):
-            if PasswordManager._sanitize_auth_entry(ent, scope):
-                changed = True
+        for item in (data or {}).get("computer2Backup", []) or []:
+            if not isinstance(item, dict):
+                continue
+            for computer_name, computer_data in item.items():
+                if not isinstance(computer_data, dict):
+                    continue
+                connection = computer_data.get("Connection") or {}
+                if PasswordManager._sanitize_auth_entry(connection, scope):
+                    changed = True
 
         if not changed:
             return False
@@ -149,10 +155,15 @@ class PasswordManager(object):
     def resolve_password(creds_dict):
         if not isinstance(creds_dict, dict):
             return ""
-        enc = creds_dict.get("encryptedPassword") or ""
+
+        enc = (creds_dict.get("EncryptedPassword") or creds_dict.get("encryptedPassword") or "" )
+
         if enc:
             try:
                 return PasswordManager.decrypt(enc)
             except Exception as e:
-                get_logger().error("DPAPI decrypt failed: {}".format( e))
-        return creds_dict.get("password") or ""
+                get_logger().error(
+                    "DPAPI decrypt failed: {}".format(e)
+                )
+
+        return (creds_dict.get("Password") or creds_dict.get("password") or "")

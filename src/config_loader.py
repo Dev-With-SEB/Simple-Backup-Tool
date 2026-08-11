@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
+import io
 import os
 import threading
 import traceback
@@ -50,9 +51,7 @@ class Config(object):
             self.temp_root = os.path.join(curretnDir,'TempDir')
             ensure_dir(self.temp_root)
 
-
         self.auth_default = (d.get("auth") or {}).get("default") or {}
-        self.auth_hosts = (d.get("auth") or {}).get("hosts") or []
         self.auth_dpapi_scope = ((d.get("auth") or {}).get("dpapiScope") or "machine").strip().lower()
 
         sch = d.get("schedule") or {}
@@ -62,26 +61,62 @@ class Config(object):
         daily = sch.get("daily")
         interval = sch.get("intervalMinutes")
         self.schedule = CronSchedule(cron_expr=cron, weekly=weekly, monthly=monthly, daily=daily, interval_minutes=interval, log=self.log)
-        # self.schedule = CronSchedule(cron_expr=cron, weekly=weekly, monthly=monthly, daily=daily, interval_minutes=interval)
+        
+        hosts = (d.get("auth") or {}).get("hosts") or []
 
-        self.computers = []
         arr = d.get("computer2Backup") or []
+        for item in arr:
+            if not isinstance(item, dict):
+                continue
+            for label, body in item.items():
+                body = body or {}
+
+                if "Connection" not in body:
+                    host = body.pop("Host", "")
+                    conn = { "Host": host,  "Username": "",  "Domain": "",  "Password": "",  "EncryptedPassword": "" }
+
+                    for h in hosts:
+                        if h.get("host") == host:
+                            conn["Username"] = h.get("username", "")
+                            conn["Domain"] = h.get("domain", "")
+                            conn["Password"] = h.get("password", "")
+                            conn["EncryptedPassword"] = h.get("encryptedPassword", "")
+                            break
+                    body["Connection"] = conn
+        self.computers = []
+
+        # Migrate old auth.hosts format to Connection block
         for item in arr:
             if isinstance(item, dict):
                 for label, body in item.items():
-                    # at some poitn should move the cred stuff here too I think it would make more sense 
+                    body = body or {}
+                    conn = body.get("Connection", {})
+
                     self.computers.append({
-                        "label": (body or {}).get("hostName") or label,
-                        "host": (body or {}).get("Host") or None,
-                        "backups": (body or {}).get("Backups") or [],
-                        "exclude": [normcase_nopath(p) for p in ((body or {}).get("Exclude") or [])],
+                        "label": body.get("hostName") or label,
+                        "host": conn.get("Host") or None,
+                        "username": conn.get("Username", ""),
+                        "domain": conn.get("Domain", ""),
+                        "backups": body.get("Backups") or [],
+                        "exclude": [
+                            normcase_nopath(p)
+                            for p in (body.get("Exclude") or [])
+                        ],
                     })
+        (d.get("auth") or {}).pop("hosts", None)
+
+
 
     def creds_for_host(self, host):
-        for entry in self.auth_hosts:
-            if (entry.get("host") or "").lower() == host.lower():
-                return entry
+        for comp in self.computers:
+            if (comp.get("host") or "").lower() == host.lower():
+                return {
+                    "Host": comp.get("host", ""),
+                    "Username": comp.get("username", ""),
+                    "Domain": comp.get("domain", "")
+                }
         return self.auth_default or {}
+
 
     def __repr__(self):
         return "Config(ips=%r, location=%r, retention=%r, temp=%r, comps=%d, logLvl=%d)" % (
@@ -100,20 +135,51 @@ class ConfigLoader(threading.Thread):
         self.stop_evt = threading.Event()
         self._last_mtime = 0.0
 
+    # def load_now(self):
+    #     if yaml is None:
+    #         raise RuntimeError("PyYAML is not installed.")
+    #     with open(self.path, "rb") as f:
+    #         data = yaml.safe_load(f) or {}
+    #     try:
+    #         if PasswordManager.sanitize_and_persist_config(data, self.path):
+    #             with open(self.path, "rb") as f2:
+    #                 data = yaml.safe_load(f2) or {}
+    #     except Exception as e:
+    #         self.log.error("Config sanitization failed: {}".format( e))
+    #     cfg = Config(data, self.path, self.log)
+    #     self.log.info("Loaded config: {}".format(cfg))
+    #     return cfg
+
     def load_now(self):
         if yaml is None:
             raise RuntimeError("PyYAML is not installed.")
+
         with open(self.path, "rb") as f:
             data = yaml.safe_load(f) or {}
+
         try:
             if PasswordManager.sanitize_and_persist_config(data, self.path):
-                with open(self.path, "rb") as f2:
-                    data = yaml.safe_load(f2) or {}
+                with open(self.path, "rb") as f:
+                    data = yaml.safe_load(f) or {}
         except Exception as e:
-            self.log.error("Config sanitization failed: {}".format( e))
+            self.log.error("Config sanitization failed: {}".format(e))
+
+        original_yaml = yaml.safe_dump(data, default_flow_style=False, allow_unicode=True)
+
         cfg = Config(data, self.path, self.log)
+
+        normalized_yaml = yaml.safe_dump(cfg._raw, default_flow_style=False, allow_unicode=True)
+
+        if normalized_yaml != original_yaml:
+            with io.open(self.path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(cfg._raw, f, default_flow_style=False, allow_unicode=True)
+
+            cfg.mtime = Config._safe_mtime(self.path)
+            self.log.info("Migrated config format: {}".format(self.path))
+
         self.log.info("Loaded config: {}".format(cfg))
         return cfg
+    
 
     def run(self):
         thread_name = threading.current_thread().name

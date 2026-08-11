@@ -426,7 +426,7 @@ class logger(object):
 if __name__ == "__main__":
     # # Example usage
     # log = logger(r'C:\Users\foobar\logfile.log', logLvl=2)
-    log = set_logger('Main',logger(name='Main', logFile='C:\Users\foobar\logfile.log', logLvl=3))
+    log = set_logger('Main',logger(name='Main', logFile=r'C:\Users\foobar\logfile.log', logLvl=3))
 
 
 

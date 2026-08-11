@@ -1,4 +1,4 @@
-Version: 0.0.7
+Version: 0.1.1
 auth:
   default:
     domain: workgroup.com
@@ -6,53 +6,54 @@ auth:
     password: ''
     username: foo
   dpapiScope: machine
-  hosts:
-  - domain: workgroup
-    encryptedPassword: Cl+sBAAAA7Eqo9pxWxkG
-    host: 192.168.1.31
-    password: ''
-    username: foo
-  - domain: workgroup
-    host: 192.168.1.162
-    password: ''
-    username: foo
-  - domain: workgroup
-    host: 192.168.1.201
-    password: ''
-    username: foo
-  - domain: workgroup
-    encryptedPassword: Cl+sBAAAA7Eqo9pxWxk
-    host: 192.168.1.91
-    password: ''
-    username: foo
 backupLocation: ifs\cluster\mfg_swd
 backupServerIps:
 - 102.121.143.87
-- localHost
+- backupServerHost
 computer2Backup:
-- FES:
+- this Computer:
     Backups:
     - C:\
     - C:\foo
-    Exclude:  
-    - 'regex ^C:\\foo\\[0-9]{8}\\.*'
-    Host: 192.168.1.91
-- FIS:
+    Connection:
+      Domain: workgroup
+      EncryptedPassword: Cl+sBAAAA7Eqo9pxWxk
+      Host: 192.168.1.91
+      Password: ''
+      Username: foo
+    Exclude:
+    - regex ^C:\\foo\\[0-9]{8}\\.*
+- remote_computer_1:
     Backups:
     - \\192.168.1.31\C$\foo
-    - \\192.168.1.31\C$\RTS Digi Serial
+    - \\192.168.1.31\C$\RTS fooBar
+    - \\192.168.1.31\D$
+    Connection:
+      Domain: workgroup
+      Host: 192.168.1.31
+      Password: ''
+      Username: foo
     Exclude:
     - \\192.168.1.31\C$\foo\*.log
-    Host: 192.168.1.31
-- WHS:
+- remote_computer_2:
     Backups:
     - \\192.168.1.162\foo
-    Host: 192.168.1.162
-- HRTS:
+    Connection:
+      Domain: workgroup
+      EncryptedPassword: ''
+      Host: 192.168.1.162
+      Password: ''
+      Username: foo
+- remote_computer_3:
     Backups:
     - \\192.168.1.201\foo
+    Connection:
+      Domain: workgroup
+      EncryptedPassword: ''
+      Host: 192.168.1.201
+      Password: ''
+      Username: foo
     Exclude: []
-    Host: 192.168.1.201
 logLvl: 4
 retentionCount: 14
 schedule:
